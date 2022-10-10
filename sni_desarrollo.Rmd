@@ -1,0 +1,689 @@
+---
+title: "Exploración y modificación de tablas de Personal SNI (2014-2017)"
+author: "Gustavo Rojas Andrade"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+    theme: leonids
+    highlight: github
+    toc: yes
+    toc_depth: 4
+---
+
+
+```{r, include=FALSE}
+# El presente documento puede correrse desde RSstudio habiendo instalado las paqueterías necesarias previamente. No es necesario disponer de las tablas en su ordenador debido a que estas se extraen de internet directamente. 
+```
+
+
+# Investigadorxs del Sistema Nacional de Investigadores 2014-2017
+
+En el siguiente trabajo se realiza una exploración de la base de datos del **portal de transparencia** del **Gobierno Federal** de México. Dicha base de dato se puede encontrar en el siguiente ***[enlace](https://www.siicyt.gob.mx/index.php/s191-sistema-nacional-de-investigadores-sni/2-uncategorised/220-bases-de-datos-abiertas-s191)***. Se comienza con una revisión de los metadatos de las tablas que contienen la respectiva información del Sistema Nacional de Investigadores (SNI), para proceder con una axploración del contenido de las mismas. 
+
+# Metadatos
+
+Los datos recolectados provienen de la colaboración del Consejo Nacional de Ciencia y Tecnología (CONACYT), junto con el sistema integrado de información sobre investigación científica, desarrollo tecnológico e innovación (siicyt) y el Gobierno de México. La información recolectada se compone de seis tablas que contienen la información de *investigadores vigentes* comprendida entre los periodos de 2014 al 2017. Tres de las tablas contienen además información segmentada por área de conocimiento; mientras que existen tres tablas correspondientes al 2015.
+
+En la siguiente tabla se presentan los nombres de las tablas, las dimensiones de las mismas y los nombres de las columnas que están contenidas en ellas. Se observará que el número de miembros vigentes en el SNI está entre los 23 mil y poco más de 27 mil personas. Así mismo contienen campos comunes como los nombres y apellidos, los grados y los niveles de SNI de los miembros vigentes.
+
+
+```{r Tablas, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(dplyr)
+library(skimr)
+library(readr)
+library(ggplot2)
+library(knitr)
+
+t2014 <- read_csv("https://www.siicyt.gob.mx/images/estadisticas/dbabiertas/SNI_Vigentes_2014.csv", 
+    col_types = cols(GENERO = col_factor(levels = c("M","F"))))
+
+t2015_sep <- read_csv("https://www.siicyt.gob.mx/images/estadisticas/dbabiertas/SNI_Vigentes_Sep_2015.csv")
+```
+
+```{r Tablas_problemas, echo=FALSE, warning=FALSE, include=FALSE}
+t2015 <- read_csv("https://www.siicyt.gob.mx/images/estadisticas/dbabiertas/SNI_Vigentes_2015.csv",col_select = 1:8,locale = locale(encoding = "latin1"))
+tail(t2015)
+t2015=t2015[-c(23317:23319),]
+tail(t2015)
+
+t2015_2 <- read_csv("https://www.siicyt.gob.mx/images/estadisticas/dbabiertas/SNI_Vigentes_por_Area_de_conocimiento_2015.csv", locale = locale(encoding = "latin1"))
+t2016 <- read_csv("https://www.siicyt.gob.mx/images/estadisticas/dbabiertas/SNI_Vigentes_por_Area_de_conocimiento_2016.csv",locale =locale(encoding = "latin1"))
+t2017 <- read_csv("https://www.siicyt.gob.mx/images/estadisticas/dbabiertas/SNI_Vigentes_por_Area_de_conocimiento_2017.csv",locale =locale(encoding = "latin1"))
+
+```
+
+
+|**Tablas**                             |**Filas, Columnas**    |**Nombres de columnas contenidas**     |
+|---------------------------------------|:-----------------:|---------------------------------------|
+|SNI Vigentes 2014                      |`r dim(t2014)`     |`r colnames(t2014)`      | 
+|SNI Vigentes 2015                      |`r dim(t2015)`     |`r colnames(t2015)`      |
+|SNI Vigentes Sep 2015                  |`r dim(t2015_sep)` |`r colnames(t2015_sep)`  |
+|SNI Vigentes por área de conocimiento 2015|`r dim(t2015_2)`|`r colnames(t2015_2)`    |
+|SNI Vigentes por área de conocimiento 2016|`r dim(t2016)`  |`r colnames(t2016)`      |
+|SNI Vigentes por área de conocimiento 2017|`r dim(t2017)`  |`r colnames(t2017)`      |
+
+# Manejo de tablas
+
+Algunas tablas presentaron problemas en su carga debido a los símbolos que se introducían; debido a ello se modificaron los parámetros para su lectura. Ello no se pudo llevar a cabo sin la inspección de los elementos y consultas en foros informativos. El error de carga se solucionó modificando la codificación a un dormato <latin1>. Además, la tabla nombrada `t2015_2` mostró información adicional no correspodiente con los datos propios de la tabla; dichas filas fueron excluidas en una tabla que sustituyó a la original.
+
+
+
+## Exploración de estructura y contenido de las tablas
+
+Como se mencionó previamente, el número de personas adscritas al SNI en el periodo 2014-2017 fue entre 23 mil y 27,187 personas. El número de campos de registro fueron aproximadamente 7. Las estructuras de las tablas se muestran a continuación:
+
+```{r estructuras, echo=FALSE}
+glimpse(t2014)
+glimpse(t2015)
+glimpse(t2015_sep)
+glimpse(t2015_2)
+glimpse(t2016)
+glimpse(t2017)
+```
+
+La información contenida en estas tablas es del tipo cadena *(string)*, por lo que se realizarán algunas transformaciones en los tipos de datos para su análisis. También se puede notar que las tablas no son uniformes entre sí. Algunas presentan información del sexo/género de los participantes y otras no. Así mismo, no todas presentan el Estado de residencia y el "área de comocimiento" se implementa únicamente en las tablas de los dos últimos años.
+
+El trabajo de transformación de variables podría reducirse si se realiza una unión de las bases de datos; esto implicaría un esfuerzo adicional en la unificación de formatos (grado más nombre y apellidos completos) para la creación de llaves primarias y externas. Podría existir el inconveniente de el cambio de grado de una persona, duplicando su registro en alguno de los años registrados si se considerara como llave primaria el grado y los apellidos completos. También podría utilizarse como llave primaria únicamente al nombre y apellido sin considerar el grado con el inconveniente de no registrar el cambio de grado de los miembros del SNI. Por el momento se mantiene el tratamiento de datos por separado para las tablas. 
+
+Se procede a inspeccionar los datos contenidos con mayor detenimiento para contemplar otras transformaciones de variables o posibilidades:
+
+### **1. Contenido de tabla: SNI Vigentes 2014**
+```{r inspección_contenido_2014, echo=FALSE}
+skim_without_charts(t2014)
+```
+
+### **2. Contenido de tabla: SNI Vigentes 2015**
+```{r inspección_contenido_2015, echo=FALSE}
+skim_without_charts(t2015)
+```
+
+### **3. Contenido de tabla: SNI Vigentes Sep 2015**
+```{r inspección_contenido_2015_sep, echo=FALSE}
+skim_without_charts(t2015_sep)
+```
+
+### **4. Contenido de tabla:  SNI Vigentes por área de conocimiento 2015**
+```{r inspección_contenido_2015_área, echo=FALSE}
+skim_without_charts(t2015_2)
+```
+
+### **5. Contenido de tabla: SNI Vigentes por área de conocimiento 2016**
+```{r inspección_contenido_2016, echo=FALSE}
+skim_without_charts(t2016)
+```
+
+### **6. Contenido de tabla: SNI Vigentes por área de conocimiento 2017**
+```{r inspección_contenido_2017, echo=FALSE}
+skim_without_charts(t2017)
+```
+
+### **Notas sobre la inspección de contenido**
+- La mayoría de los datos en las tablas estaban completos (mínimo 96%).
+- Algunas tablas presentan más de 4 niveles de SNI, por lo que se requiere la inspección de dicho elemento. 
+- Se puede completar la sección de "eméritos" para realizar un contraste de número de SNI eméritos contra no eméritos y representarles de manera porcentual.
+- El "Grado" académico es amplio por ser específico en algunos casos. Puede ser generalizado en menos categorías.
+
+## Resumen de contenido
+
+Los tipos de variables fueron transformados de tipo *character* a *factor*. En las secciones de este apartado se muestra el contenido de las tablas con el conteo de cada categoría según el año correspondiente. 
+
+```{r transformacion1_tablas, echo =FALSE}
+t2014 = t2014 %>% 
+  mutate(GRADO = as.factor(GRADO),
+         NIVEL =as.factor(NIVEL),
+         INSTITUCION=as.factor(INSTITUCION),
+         ESTADO=as.factor(ESTADO))
+
+t2015 = t2015 %>% 
+  mutate(NOBILIS = as.factor(NOBILIS),
+        `SEXO*` = as.factor(`SEXO*`),
+        NIVEL = as.factor(NIVEL),
+        DEPENDENCIA = as.factor(DEPENDENCIA),
+        ESTADO = as.factor(ESTADO),
+        `INSTITUCIÓN DE ADSCRIPCIÓN`= as.factor(`INSTITUCIÓN DE ADSCRIPCIÓN`),
+        es_emerito = as.factor(ifelse(is.na(EMERITO),"No eméritx", "Eméritx")))
+
+t2015_sep = t2015_sep %>%
+  mutate(GRADO = as.factor(GRADO),
+         NIVEL = as.factor(NIVEL),
+         GENERO = as.factor(GENERO),
+         INSTITUCION = as.factor(INSTITUCION),
+         ESTADO = as.factor(ESTADO))
+
+t2015_2 = t2015_2 %>% 
+  mutate(Grado = as.factor(Grado),
+         Nivel = as.factor(Nivel),
+         `Institución de adcripción` = as.factor(`Institución de adcripción`),
+         `Área de conocimiento` = as.factor(`Área de conocimiento`))
+
+t2016 = t2016 %>% 
+  mutate(Grado = as.factor(Grado),
+         Nivel = as.factor(Nivel),
+         `Institución de adcripción`= as.factor(`Institución de adcripción`),
+         `Área de conocimiento` = as.factor(`Área de conocimiento`))
+
+t2017 = t2017 %>% 
+  mutate(Grado = as.factor(Grado),
+         Nivel = as.factor(Nivel),
+         `Institución de adcripción` = as.factor(`Institución de adcripción`),
+         `Área de conocimiento` = as.factor(`Área de conocimiento`))
+```
+
+### **2014**
+
+```{r niveles2014, echo= FALSE}
+knitr::kable(table(t2014$NIVEL), col.names = c("Categoría","Frecuencia"), caption = "**Nivel de SNI**") 
+knitr::kable(table(t2014$GENERO), col.names = c("Categoría","Frecuencia"), caption = "**Género**")
+knitr::kable(table(t2014$GRADO), col.names = c("Categoría","Frecuencia"), caption = "**Grado académico**")
+knitr::kable(table(t2014$ESTADO), col.names = c("Categoría","Frecuencia"), caption = "**Estado**")
+knitr::kable(table(t2014$INSTITUCION), col.names = c("Categoría","Frecuencia"), caption = "**Institución**")
+```
+
+### **2015**
+```{r niveles2015, echo=FALSE}
+knitr::kable(table(t2015$NIVEL), col.names = c("Categoría","Frecuencia"), caption = "**Nivel**")
+knitr::kable(table(t2015$`SEXO*`), col.names = c("Categoría","Frecuencia"), caption = "**Género**")
+knitr::kable(table(t2015$NOBILIS), col.names = c("Categoría","Frecuencia"), caption = "**Grado académico**")
+knitr::kable(table(t2015$es_emerito), col.names = c("Categoría","Frecuencia"), caption = "**Eméritx**")
+knitr::kable(table(t2015$ESTADO), col.names = c("Categoría","Frecuencia"), caption = "**Estado**")
+knitr::kable(table(t2015$DEPENDENCIA), col.names = c("Categoría","Frecuencia"), caption = "**Dependencia**")
+knitr::kable(table(t2015$`INSTITUCIÓN DE ADSCRIPCIÓN`), col.names = c("Categoría","Frecuencia"), caption = "**Institución de adscripción**")
+```
+
+### **2015 Septiembre**
+```{r niveles2015_sept, echo=FALSE}
+knitr::kable(table(t2015_sep$NIVEL), col.names = c("Categoría","Frecuencia"), caption = "**Nivel**")
+knitr::kable(table(t2015_sep$GENERO), col.names = c("Categoría","Frecuencia"), caption = "**Género**")
+knitr::kable(table(t2015_sep$GRADO), col.names = c("Categoría","Frecuencia"), caption = "**Grado**")
+knitr::kable(table(t2015_sep$ESTADO), col.names = c("Categoría","Frecuencia"), caption = "**Estado**")
+knitr::kable(table(t2015_sep$INSTITUCION), col.names = c("Categoría","Frecuencia"), caption = "**Institución de adscripción**")
+```
+
+### **2015 por área de conocimiento**
+```{r niveles2015_Xarea, echo=FALSE}
+knitr::kable(table(t2015_2$Nivel), col.names = c("Categoría","Frecuencia"), caption = "**Nivel**")
+knitr::kable(table(t2015_2$Grado), col.names = c("Categoría","Frecuencia"), caption = "**Grado**")
+knitr::kable(table(t2015_2$`Área de conocimiento`), col.names = c("Categoría","Frecuencia"), caption = "**Área de conocimiento**")
+knitr::kable(table(t2015_2$`Institución de adcripción`), col.names = c("Categoría","Frecuencia"), caption = "**Institución de adscripción**")
+```
+
+### **2016**
+```{r niveles2016, echo=FALSE}
+knitr::kable(table(t2016$Nivel), col.names = c("Categoría","Frecuencia"), caption = "**Nivel**")
+knitr::kable(table(t2016$Grado), col.names = c("Categoría","Frecuencia"), caption = "**Grado**")
+knitr::kable(table(t2016$`Área de conocimiento`), col.names = c("Categoría","Frecuencia"), caption = "**Área de conocimiento**")
+knitr::kable(table(t2016$`Institución de adcripción`), col.names = c("Categoría","Frecuencia"), caption = "**Institución de adscripción**")
+```
+
+
+### **2017**
+```{r niveles2017, echo=FALSE}
+knitr::kable(table(t2017$Nivel), col.names = c("Categoría","Frecuencia"), caption = "**Nivel**")
+knitr::kable(table(t2017$Grado), col.names = c("Categoría","Frecuencia"), caption = "**Grado**")
+knitr::kable(table(t2017$`Área de conocimiento`), col.names = c("Categoría","Frecuencia"), caption = "**Área de conocimiento**")
+knitr::kable(table(t2017$`Institución de adcripción`), col.names = c("Categoría","Frecuencia"), caption = "**Institución de adscripción**")
+```
+
+### **Notas de datos específicos**
+
+Generales:
+
+> - Existen múltiples títulos que pueden ser homologados a nivel licenciatura, maestría o doctorado.
+> - Dentro de los Estados existe la categoría *NO DISPONIBLE*.
+
+Para la tabla de 2014: 
+
+> - La categoría de nivel *C* debe representar a lxs candidatxs a SNI para ese año. Se modificará el contenido para que no genere dudas en la visualización.
+> - Las Categorías de Género muestran como *F* y *M*. Suponiendo que se refieren a Femenino y Masculino, correspondientemente, se modificarán estas categorías más adelante.
+
+Para 2015:
+
+> - La categoría de nivel *C* debe representar a lxs candidatxs a SNI para ese año. Se modificará el contenido para que no genere dudas en la visualización.
+> - Se puede completar las categorías de Género para Masculino y Femenino, en lugar del original (H y M).
+> - Es la única tabla que muestra una sección de emétitxs.
+> - El número de individuos corresponde entre la primer tabla y la que hace la división por ára de conocimiento; la tabla de septiembre contiene a 14 personas menos, por lo que puede revisarse esta información. Puede considerarse hacer una unión de tablas por nombre y apellido para facilitar análisis posteriores o completar información en una misma tabla. 
+> - **Dependencia** e **Institución de adscripción** son campos muy similares en contenido. Puede evaluarse si el contenido es exactamente el mismo. 
+
+Para 2015 de Septiembre:
+
+> - La categoría de nivel *C* debe representar a lxs candidatxs a SNI para ese año. Se modificará el contenido para que no genere dudas en la visualización.
+> - Las Categorías de Género muestran como *F* y *M*. Suponiendo que se refieren a Femenino y Masculino, correspondientemente, se modificarán estas categorías más adelante.
+
+Para 2015 por área de conocimiento:
+
+> - La categoría de nivel *C* debe representar a lxs candidatxs a SNI para ese año. Se modificará el contenido para que no genere dudas en la visualización. Además hay una persona de Nivel 4 en el SNI y otra sin información. Se puede realizar una consulta en las tablas al identificarse a esa persona. 
+> - Existen personas sin información en el área de conocimiento. Ésto no ocurre en la tabla de los años siguientes.
+
+Para 2016:
+
+> - La categoría de nivel *C* debe representar a lxs candidatxs a SNI para ese año. Se modificará el contenido para que no genere dudas en la visualización. Existe una persona en Nivel 4 del SNI.
+
+Para 2017:
+
+> - La categoría de nivel *C* debe representar a lxs candidatxs a SNI para ese año. Se modificará el contenido para que no genere dudas en la visualización. Existe una persona en Nivel 4 del SNI.
+
+### **Primeras resoluciones**
+
+```{r Casos_dudosos, echo= FALSE}
+t2015_2 %>% 
+  filter(Nivel == "4" | Nivel == "Sin información")
+
+t2016 %>% 
+  filter(Nivel == "4")
+# Nuevamente el Dr. HERRERA REVILLA ISMAEL completó del mismo modo los campos.
+t2017 %>% 
+  filter(Nivel == "4")
+# Nuevamente el Dr. HERRERA REVILLA ISMAEL completó del mismo modo los campos.
+
+t2014 %>% 
+  filter(NOMBRE == "ISMAEL" & PATERNO == "HERRERA")
+t2015_sep %>% 
+  filter(NOMBRE == "ISMAEL" & PATERNO == "HERRERA")
+# Sus datos indican que su nivel SNI anterior era 3. La información puede ser sustituida. Una revisión bibliogrpafica lo marca como Emérito. Posiblemente por ello se marcó como Nivel 4. 
+
+```
+Se observó que son los Drs. HERRERA REVILLA ISMAEL y LUNA FLORES MAXIMINO quienes pusieron la información de tal manera. El primero de la UNAM, el segundo sin Información de Área I y Área VI respectivamente.
+# Se puede hacer un seguimiento de los mismos. Posteriormente, se observó que para el 2016 y 2017 el Dr. HERRERA REVILLA ISMAEL completó del mismo modo los campos.Además, sus datos indican que su nivel SNI anterior era 3. La información puede ser sustituida o se mantiene de la misma manera. Una revisión bibliográfica indica que el investigador es *emérito*; posiblemente por ello se marcó como Nivel 4.
+  
+> - Se integró al Dr. Ismael Herrera Revilla como Nivel 3 en las tablas correspondientes.
+>  
+> - No se encontró información adicional del Dr. Maximino Luna en otras tablas, por lo cual la consulta no pudo ser resuelta.
+
+
+```{r nuevasvariables, echo=FALSE, warning=FALSE}
+t2014 = t2014 %>% 
+  mutate(NIVEL = fct_recode(NIVEL, "Candidatx" = "C"),
+         Grado_acad = fct_recode(GRADO, "Licenciatura" = "BIOL.",
+                                 "Licenciatura" = "FIS.",
+                                 "Licenciatura" = "ING.",
+                                 "Licenciatura" = "LIC.",
+                                 "Licenciatura" = "MED.",
+                                 "Licenciatura" = "Q.F.B.",
+                                 "Licenciatura" = "QUIM.",
+                                 "Maestría" = "M. EN A.",
+                                 "Maestría" = "M. EN B.",
+                                 "Maestría" = "M. EN C.",
+                                 "Maestría" = "M. EN I.",
+                                 "Maestría" = "MTRA.",
+                                 "Maestría" = "MTRO.",
+                                 "Doctorado" = "DR.",
+                                 "Doctorado" = "DRA."),
+         GENERO = fct_recode(GENERO, "Masculino" = "M", "Femenino" = "F"),
+         Instituciones = fct_lump(INSTITUCION, n=50, other_level = "Otras"))
+niveles_grado = c("Licenciatura", "Maestría", "Doctorado")
+t2014$Grado_acad = factor(t2014$Grado_acad, levels = niveles_grado)
+
+t2015 = t2015 %>%
+  mutate(NIVEL = fct_recode(NIVEL, "Candidatx" = "C"),
+         Grado_acad = fct_recode(NOBILIS, "Licenciatura" = "BIOL.",
+                                 "Licenciatura" = "FIS.",
+                                 "Licenciatura" = "ING.",
+                                 "Licenciatura" = "LIC.",
+                                 "Licenciatura" = "MED.",
+                                 "Licenciatura" = "Q.F.B.",
+                                 "Licenciatura" = "Q.B.P.",
+                                 "Licenciatura" = "QUIM.",
+                                 "Maestría" = "M. EN A.",
+                                 "Maestría" = "M. EN B.",
+                                 "Maestría" = "M. EN C.",
+                                 "Maestría" = "M. EN I.",
+                                 "Maestría" = "MTRA.",
+                                 "Maestría" = "MTRO.",
+                                 "Doctorado" = "DR.",
+                                 "Doctorado" = "DRA."),
+         GENERO = fct_recode(`SEXO*`,"Masculino" = "H", "Femenino" = "M"),
+         Instituciones = fct_lump(`INSTITUCIÓN DE ADSCRIPCIÓN`, n=50, other_level = "Otras"))
+t2015$Grado_acad = factor(t2015$Grado_acad, levels= niveles_grado)
+
+t2015_sep = t2015_sep %>%
+  mutate(NIVEL = fct_recode(NIVEL, "Candidatx" = "C"),
+         Grado_acad = fct_recode(GRADO, "Licenciatura" = "BIOL.",
+                                 "Licenciatura" = "FIS.",
+                                 "Licenciatura" = "ING.",
+                                 "Licenciatura" = "LIC.",
+                                 "Licenciatura" = "MED.",
+                                 "Licenciatura" = "Q.F.B.",
+                                 "Licenciatura" = "QUIM.",
+                                 "Maestría" = "M. EN A.",
+                                 "Maestría" = "M. EN B.",
+                                 "Maestría" = "M. EN C.",
+                                 "Maestría" = "M. EN I.",
+                                 "Maestría" = "MTRA.",
+                                 "Maestría" = "MTRO.",
+                                 "Doctorado" = "DR.",
+                                 "Doctorado" = "DRA."),
+         GENERO = fct_recode(GENERO,"Masculino" = "M", "Femenino" = "F"),
+         Instituciones = fct_lump(INSTITUCION, n=50, other_level = "Otras"))
+niveles_gen = c("Masculino", "Femenino")
+t2015_sep$Grado_acad = factor(t2015_sep$Grado_acad, levels = niveles_grado)
+t2015_sep$GENERO = factor(t2015_sep$GENERO, levels = niveles_gen)
+
+
+t2015_2 = t2015_2 %>%
+  mutate(Nivel = fct_recode(Nivel, "Candidatx" = "C", "3"="4"),
+         Grado_acad = fct_recode(Grado, "Licenciatura" = "BIOL.",
+                                 "Licenciatura" = "FIS.",
+                                 "Licenciatura" = "ING.",
+                                 "Licenciatura" = "LIC.",
+                                 "Licenciatura" = "MED.",
+                                 "Licenciatura" = "Q.F.B.",
+                                 "Licenciatura" = "Q.B.P.",
+                                 "Licenciatura" = "QUIM.",
+                                 "Maestría" = "M. EN A.",
+                                 "Maestría" = "M. EN B.",
+                                 "Maestría" = "M. EN C.",
+                                 "Maestría" = "M. EN I.",
+                                 "Maestría" = "MTRA.",
+                                 "Maestría" = "MTRO.",
+                                 "Doctorado" = "DR.",
+                                 "Doctorado" = "DR..",
+                                 "Doctorado" = "DRA."),
+         Instituciones = fct_lump(`Institución de adcripción`, n=50, other_level = "Otras"))
+t2015_2$Grado_acad = factor(t2015_2$Grado_acad, levels = niveles_grado)
+
+t2016 = t2016 %>%
+  mutate(Nivel =fct_recode(Nivel, "Candidatx" = "C", "3"="4"),
+         Grado_acad = fct_recode(Grado, "Licenciatura" = "BIOL.",
+                                 "Licenciatura" = "FIS.",
+                                 "Licenciatura" = "ING.",
+                                 "Licenciatura" = "LIC.",
+                                 "Licenciatura" = "MED.",
+                                 "Licenciatura" = "Q.F.B.",
+                                 "Licenciatura" = "QUIM.",
+                                 "Maestría" = "M. EN A.",
+                                 "Maestría" = "M. EN B.",
+                                 "Maestría" = "M. EN C.",
+                                 "Maestría" = "M. EN I.",
+                                 "Maestría" = "MTRA.",
+                                 "Maestría" = "MTRO.",
+                                 "Doctorado" = "DR.",
+                                 "Doctorado" = "DRA."),
+         Instituciones = fct_lump(`Institución de adcripción`, n=50, other_level = "Otras"))
+t2016$Grado_acad = factor(t2016$Grado_acad, levels= niveles_grado)
+
+t2017 = t2017 %>% 
+  mutate(Nivel =fct_recode(Nivel, "Candidatx" = "C", "3"="4"),
+         Grado_acad = fct_recode(Grado, "Licenciatura" = "BIOL.",
+                                 "Licenciatura" = "BIOQ.",
+                                 "Licenciatura" = "FIS.",
+                                 "Licenciatura" = "ING.",
+                                 "Licenciatura" = "LIC.",
+                                 "Licenciatura" = "MED.",
+                                 "Licenciatura" = "MAT.",
+                                 "Licenciatura" = "Q.F.B.",
+                                 "Licenciatura" = "QUIM",
+                                 "Licenciatura" = "QUIM.",
+                                 "Maestría" = "M. EN A.",
+                                 "Maestría" = "M. EN B.",
+                                 "Maestría" = "M. EN C.",
+                                 "Maestría" = "M. EN I.",
+                                 "Maestría" = "MTRA.",
+                                 "Maestría" = "MTRO.",
+                                 "Doctorado" = "DR.",
+                                 "Doctorado" = "DRA.",
+                                 "Doctorado" = "DRA,"),
+         Instituciones = fct_lump(`Institución de adcripción`, n=50, other_level = "Otras"))
+t2017$Grado_acad = factor(t2017$Grado_acad, levels= niveles_grado)
+```
+
+A continuación se muestra un resumen de las nuevas variables y variables modificadas en formato tabular.
+
+```{r var_modifi, echo =FALSE}
+knitr::kable(table(t2014$NIVEL), col.names = c("Categoría","Frecuencia"), caption = "**Nivel**")
+knitr::kable(table(t2014$Grado_acad), col.names=c("Categoría","Frecuencia"), caption = "**Grado académico**")
+knitr::kable(table(t2014$GENERO),col.names = c("Categoría","Frecuencia"), caption = "**Género**")
+knitr::kable(table(t2014$Instituciones), col.names = c("Institución", "Frecuencia"), caption= "**Instituciones**")
+
+knitr::kable(table(t2015$NIVEL),col.names = c("Categoría","Frecuencia"),caption = "**Nivel**")
+knitr::kable(table(t2015$Grado_acad),col.names = c("Categoría","Frecuencia"),caption = "**Grado académico**")
+knitr::kable(table(t2015$GENERO),col.names = c("Categoría","Frecuencia"),caption = "**Género**")
+
+knitr::kable(table(t2015_sep$NIVEL),col.names = c("Categoría","Frecuencia"),caption = "**Nivel**")
+knitr::kable(table(t2015_sep$Grado_acad),col.names = c("Categoría","Frecuencia"),caption = "**Grado académico**")
+knitr::kable(table(t2015_sep$GENERO),col.names = c("Categoría","Frecuencia"),caption = "**Género**")
+
+knitr::kable(table(t2015_2$Nivel),col.names = c("Categoría","Frecuencia"),caption = "**Nivel**")
+knitr::kable(table(t2015_2$Grado_acad),col.names = c("Categoría","Frecuencia"),caption = "**Grado académico**")
+
+knitr::kable(table(t2016$Nivel),col.names = c("Categoría","Frecuencia"),caption = "**Nivel**")
+knitr::kable(table(t2016$Grado_acad),col.names = c("Categoría","Frecuencia"),caption = "**Grado académico**")
+
+knitr::kable(table(t2017$Nivel),col.names = c("Categoría","Frecuencia"),caption = "**Nivel**")
+knitr::kable(table(t2017$Grado_acad),col.names = c("Categoría","Frecuencia"),caption = "**Grado académico**")
+```
+
+# Resumen gráfico
+
+Se muestran las primeras gráficas del contenido de las tablas. Se disponen por variable en orden anual (creciente) para facilitar la comparación del contenido. 
+
+## Cantidad de investigadorxs SNI registardos en cada tabla
+
+```{r Cant_por_niveles_Graf, echo=FALSE}
+ggplot(t2014) +
+  geom_bar(mapping=aes(x=NIVEL,fill=NIVEL))+
+  ggtitle("Niveles de Investigadorxs SNI", subtitle = "2014")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Nivel de SNI")+
+  theme_light()
+
+ggplot(t2015) +
+  geom_bar(mapping=aes(x=NIVEL,fill=NIVEL))+
+  ggtitle("Niveles de Investigadorxs SNI", subtitle = "2015")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Nivel de SNI")+
+  theme_light()
+
+ggplot(t2015_sep) +
+  geom_bar(mapping=aes(x=NIVEL,fill=NIVEL))+
+  ggtitle("Niveles de Investigadorxs SNI", subtitle = "2015 de Septiembre")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Nivel de SNI")+
+  theme_light()
+
+ggplot(t2015_2) +
+  geom_bar(mapping=aes(x=Nivel,fill=Nivel))+
+  ggtitle("Niveles de Investigadorxs SNI", subtitle = "2015 de tabla 3")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Nivel de SNI")+
+  theme_light()
+
+ggplot(t2016) +
+  geom_bar(mapping=aes(x=Nivel,fill=Nivel))+
+  ggtitle("Niveles de Investigadorxs SNI", subtitle = "2016")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Nivel de SNI")+
+  theme_light()
+
+ggplot(t2017) +
+  geom_bar(mapping=aes(x=Nivel,fill=Nivel))+
+  ggtitle("Niveles de Investigadorxs SNI", subtitle = "2017")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Nivel de SNI")+
+  theme_light()
+
+```
+
+
+## Cantidad de SNI por grado académico
+
+```{r Cant_SNI_por_G_academico, echo=FALSE}
+ggplot(t2014) +
+  geom_bar(mapping=aes(x=Grado_acad,fill=Grado_acad))+
+  ggtitle("Grados académicos dentro del SNI", subtitle = "2014")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Grado académico")+
+  theme_light()
+
+ggplot(t2015) +
+  geom_bar(mapping=aes(x=Grado_acad,fill=Grado_acad))+
+  ggtitle("Grados académicos dentro del SNI", subtitle = "2015")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Grado académicos")+
+  theme_light()
+
+ggplot(t2015_sep) +
+  geom_bar(mapping=aes(x=Grado_acad,fill=Grado_acad))+
+  ggtitle("Grados académicos dentro del SNI", subtitle = "2015 de Septiembre")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Grado académico")+
+  theme_light()
+
+ggplot(t2015_2) +
+  geom_bar(mapping=aes(x=Grado_acad,fill=Grado_acad))+
+  ggtitle("Grados académicos dentro del SNI", subtitle = "2015 de tabla 3")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Grado académico")+
+  theme_light()
+
+ggplot(t2016) +
+  geom_bar(mapping=aes(x=Grado_acad,fill=Grado_acad))+
+  ggtitle("Grados académicos dentro del SNI", subtitle = "2016")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Grado académico")+
+  theme_light()
+
+ggplot(t2017) +
+  geom_bar(mapping=aes(x=Grado_acad,fill=Grado_acad))+
+  ggtitle("Grados académicos dentro del SNI", subtitle = "2017")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Grado académico")+
+  theme_light()
+
+```
+
+## Cantidad por género
+
+```{r Div_genero, echo=FALSE}
+ggplot(t2014) +
+  geom_bar(mapping=aes(x=GENERO,fill=GENERO))+
+  ggtitle("División por género en el SNI", subtitle = "2014")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Género")+
+  theme_light()
+
+ggplot(t2015) +
+  geom_bar(mapping=aes(x=GENERO,fill=GENERO))+
+  ggtitle("División por género en el SNI", subtitle = "2015")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Género")+
+  theme_light()
+
+ggplot(t2015_sep) +
+  geom_bar(mapping=aes(x=GENERO,fill=GENERO))+
+  ggtitle("División por género en el SNI", subtitle = "2015 de Septiembre")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Género")+
+  theme_light()
+
+```
+
+## Eméritxs
+
+```{r Eméritxs, echo=FALSE}
+ggplot(t2015) +
+  geom_bar(mapping=aes(x=es_emerito,fill=es_emerito))+
+  ggtitle("Investigadorxs eméritxs", subtitle = "2015")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Estatus")+
+  theme_light()
+```
+
+## Investigadorxs SNI por Estado
+
+```{r Div_porEstado, echo=FALSE, fig.width=11}
+ggplot(t2014) +
+  geom_bar(mapping=aes(x=ESTADO,fill=ESTADO))+
+  ggtitle("División por Estado de investigadorxs", subtitle = "2014")+
+  labs(y="Número de investigadorxs",x=NULL)+
+  coord_flip()+
+  theme(legend.position = "none")+
+  theme_light()
+
+ggplot(t2015) +
+  geom_bar(mapping=aes(x=ESTADO,fill=ESTADO))+
+  ggtitle("División por Estado de investigadorxs", subtitle = "2015")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Estado")+
+  coord_flip()+
+  theme(legend.position = "none")+
+  theme_light()
+
+ggplot(t2015_sep) +
+  geom_bar(mapping=aes(x=ESTADO,fill=ESTADO))+
+  ggtitle("División por Estado de investigadorxs", subtitle = "2015 de Septiembre")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Estado")+
+  coord_flip()+
+  theme(legend.position = "none")+
+  theme_light()
+```
+
+
+```{r Di_porInstitución, echo=FALSE, eval=FALSE}
+## Investigadorxs por Institución
+
+ggplot(t2014) +
+  geom_bar(mapping=aes(x=INSTITUCION,fill=INSTITUCION))+
+  ggtitle("Instituciones a las cuales pertenecen lxs investigadorxs", subtitle = "2014")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Institución")+
+  coord_flip()+
+  theme_light()
+
+ggplot(t2015) +
+  geom_bar(mapping=aes(x=`INSTITUCIÓN DE ADSCRIPCIÓN`,fill=`INSTITUCIÓN DE ADSCRIPCIÓN`))+
+  ggtitle("Instituciones a las cuales pertenecen lxs investigadorxs", subtitle = "2015")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Institución")+
+  coord_flip()+
+  theme_light()
+
+ggplot(t2015_sep) +
+  geom_bar(mapping=aes(x=INSTITUCION,fill=INSTITUCION))+
+  ggtitle("Instituciones a las cuales pertenecen lxs investigadorxs", subtitle = "2015 de Septiembre")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Institución")+
+  coord_flip()+
+  theme_light()
+
+ggplot(t2015_2) +
+  geom_bar(mapping=aes(x=`Institución de adcripción`,fill=`Institución de adcripción`))+
+  ggtitle("Instituciones a las cuales pertenecen lxs investigadorxs", subtitle = "2015 de tabla 3")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Institución")+
+  coord_flip()+
+  theme_light()
+
+ggplot(t2016) +
+  geom_bar(mapping=aes(x=`Institución de adcripción`,fill=`Institución de adcripción`))+
+  ggtitle("Instituciones a las cuales pertenecen lxs investigadorxs", subtitle = "2016")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Institución")+
+  coord_flip()+
+  theme_light()
+
+ggplot(t2017) +
+  geom_bar(mapping=aes(x=`Institución de adcripción`,fill=`Institución de adcripción`))+
+  ggtitle("Instituciones a las cuales pertenecen lxs investigadorxs", subtitle = "2017")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Institución")+
+  coord_flip()+
+  theme_light()
+
+```
+
+## Área de conocimiento de lxs investigadorxs
+
+```{r Area_deConocim_Graf, echo=FALSE, fig.width=11}
+ggplot(t2015_2) +
+  geom_bar(mapping=aes(x=`Área de conocimiento`,fill=`Área de conocimiento`))+
+  ggtitle("División por área de conocimiento", subtitle = "2015 (de tabla 3)")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Área")+
+  coord_flip() +
+  theme_light()
+
+ggplot(t2016) +
+  geom_bar(mapping=aes(x=`Área de conocimiento`,fill=`Área de conocimiento`))+
+  ggtitle("División por área de conocimiento", subtitle = "2016")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Área")+
+  coord_flip() +
+  theme_light()
+
+ggplot(t2017) +
+  geom_bar(mapping=aes(x=`Área de conocimiento`,fill=`Área de conocimiento`))+
+  ggtitle("División por área de conocimiento", subtitle = "2017")+
+  labs(y="Número de investigadorxs",x=NULL, fill="Área")+
+  coord_flip() +
+  theme_light()
+
+```
+
+
+```{r, fig.height=5,fig.width=7, eval=FALSE}
+library(treemapify)
+
+
+inst1 = t2014 %>% 
+          group_by(Instituciones) %>% 
+          summarise(conteo=length(Instituciones)) 
+ggplot(inst1, aes(area = conteo, fill=Instituciones, label=conteo))+
+  geom_treemap()
+```
+
